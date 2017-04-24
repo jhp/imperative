@@ -1,8 +1,8 @@
 {
-  "name": "victoria",
+  "name": "imperative",
   "version": "1.0.0",
   "description": "Structured UI Programming",
-  "main": "victoria.js",
+  "main": "imperative.js",
   "dependencies": {
     "snabbdom": "^0.6.7"
   },
@@ -13,12 +13,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jhp/victoria.git"
+    "url": "git+https://github.com/jhp/imperative.git"
   },
   "author": "Jason Priestley <jasonhpriestley@gmail.com>",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/jhp/victoria/issues"
+    "url": "https://github.com/jhp/imperative/issues"
   },
-  "homepage": "https://github.com/jhp/victoria#readme"
+  "homepage": "https://github.com/jhp/imperative#readme"
 }

@@ -8,7 +8,7 @@ const server = http.createServer((req, res) => {
   res.statusCode = 200;
   res.setHeader('Content-Type', 'text/html');
   res.write('<!doctype html><body style="background-color:black"><script type="text/javascript">')
-  browserify('sneath.js').bundle()
+  browserify('imperative.js').bundle()
     .on('end', () => res.end('</script>')).pipe(res, {end: false});
 });
 
