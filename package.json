@@ -1,0 +1,24 @@
+{
+  "name": "victoria",
+  "version": "1.0.0",
+  "description": "Structured UI Programming",
+  "main": "victoria.js",
+  "dependencies": {
+    "snabbdom": "^0.6.7"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jhp/victoria.git"
+  },
+  "author": "Jason Priestley <jasonhpriestley@gmail.com>",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jhp/victoria/issues"
+  },
+  "homepage": "https://github.com/jhp/victoria#readme"
+}
