@@ -38,13 +38,11 @@ const setState = (sym, value) => {
 const getState = sym => stateValues.get(sym)
 
 const watchState = function*(sym) {
-  let done = false
   return yield (resolve, reject) => {
     if(!stateUpdateListeners.has(sym)) {
       stateUpdateListeners.set(sym, [])
     }
-    console.log("Pushing stateUpdateListener")
-    stateUpdateListeners.get(sym).push(val => { if(!done) resolve(val) })
+    stateUpdateListeners.get(sym).push(val => resolve(val))
     return nil_dom
   }
 }

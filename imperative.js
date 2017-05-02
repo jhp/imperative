@@ -7,14 +7,15 @@ const patch = snabbdom.init([
   require('snabbdom/modules/eventlisteners').default
 ])
 const hDom = require('snabbdom/h').default
-const state = require("./state")
 
 const mapOut = fn => function* (w) {
   let arg = undefined
   while(true) {
     const o = w.next(arg)
-    if(o.done) return o.value
-    arg = yield (resolve, reject) => fn(o.value(resolve, reject))
+    if(o.done) {
+      return o.value
+    }
+    arg = yield (resolve, reject, isDone) => fn(o.value(resolve, reject, isDone))
   }
 }
       
@@ -26,48 +27,43 @@ const zip = function* (ws) {
         return o.value
       }
     }
-    yield (parentResolve, parentReject) => {
-      let done = false
-      return os.map((o, ii) => {
-        const resolve = z => {
-          if(done) return
-          done = true
-          os[ii] = ws[ii].next(z)
-          parentResolve()
-        }
-        const reject = z => {
-          if(done) return
-          done = true
-          os[ii] = ws[ii].throw(z)
-          parentResolve()
-        }
-        return o.value(resolve, reject)})
+    yield (parentResolve, parentReject, isDone) => {
+      return os.map((o, ii) => 
+                    o.value(
+                      z => { if(!isDone()) { os[ii] = ws[ii].next(z); parentResolve() } },
+                      e => { if(!isDone()) { os[ii] = ws[ii].throw(e); parentResolve() } },
+                      isDone))
     }
   }
 }
-
+  
 function* constGenerator(w) {
   return yield w
 }
 
 const isGenerator = w => !!(w.next && w.throw)
 
-const upGenerator = w => isGenerator(w) ? w : constGenerator((resolve, reject) => w)
+const upGenerator = w => isGenerator(w) ? w : constGenerator((resolve, reject, isDone) => w)
 
-const run = w => {
+const run = (w, elem) => {
   let vnode = undefined
   next()
   function next(z, err) {
+    let done = false
+    let o
     if(err) {
       o = w.throw(err)
     } else {
       o = w.next(z)
     }
-    console.log(o)
     if(o.done)
-      console.log(o.value)
+      console.log("Top-level widget finished", o.value)
     else
-      vnode = patch(vnode || document.body, o.value(next, (e) => { next(undefined, e) }, fn => {}))
+      vnode = patch(vnode || elem, o.value(
+        z => { if(!done) { done = true; next(z) } },
+        e => { if(!done) { done = true; next(undefined, e) } },
+        () => done
+      ))
   }
 }
 
@@ -87,14 +83,6 @@ const h = function() {
   }
 }
 
-
-const Button = function*(str) {
-  return yield (resolve,reject) => h('button', {props: {type: 'text'}, on: {click: () => resolve()}}, str)
-}
-
-const Input = function*(str) {
-  return yield (resolve,reject) => h('input', {props: {type: 'text', value: str}, on: {change: e => resolve(e.target.value)}})
-}
 
 module.exports = {
   run: run,
