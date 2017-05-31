@@ -2,6 +2,8 @@ const genysm = require("./gensym")
 const nil_dom = require("./nil_dom")
 const snabbdom = require("snabbdom")
 const patch = snabbdom.init([
+  require('snabbdom/modules/attributes').default,
+  require('snabbdom/modules/class').default,
   require('snabbdom/modules/props').default,
   require('snabbdom/modules/style').default,
   require('snabbdom/modules/eventlisteners').default
@@ -18,7 +20,34 @@ const mapOut = fn => function* (w) {
     arg = yield (resolve, reject, isDone) => fn(o.value(resolve, reject, isDone))
   }
 }
-      
+
+function memo(wfn) {
+  let widgets = new Map()
+  let outputs = new Map()
+  return (x) => {
+    if(!widgets.has(x)) {
+      widgets.set(x, wfn(x))
+    }
+    return function*() {
+      let arg;
+      if(outputs.has(x)) {
+        arg = yield outputs.get(x)
+      }
+      while(true) {
+        const o = widgets.get(x).next(arg)
+        if(o.done) {
+          widgets.delete(x)
+          outputs.delete(x)
+          return o.value
+        } else {
+          outputs.set(x, o.value)
+          arg = yield o.value
+        }
+      }
+    }()
+  }
+}
+
 const zip = function* (ws) {
   let os = ws.map(w => w.next())
   while(true) {
@@ -28,7 +57,7 @@ const zip = function* (ws) {
       }
     }
     yield (parentResolve, parentReject, isDone) => {
-      return os.map((o, ii) => 
+      return os.map((o, ii) =>
                     o.value(
                       z => { if(!isDone()) { os[ii] = ws[ii].next(z); parentResolve() } },
                       e => { if(!isDone()) { os[ii] = ws[ii].throw(e); parentResolve() } },
@@ -36,7 +65,7 @@ const zip = function* (ws) {
     }
   }
 }
-  
+
 function* constGenerator(w) {
   return yield w
 }
@@ -77,9 +106,9 @@ const h = function() {
     return hDom.apply(this, arguments)
   }
   if(args[0].some(isGenerator)) {
-    return mapOut(ws => hDom.apply(this, finalArgs.concat([ws.filter(d => d != nil_dom)])))(zip(args[0].map(upGenerator)))
+    return mapOut(ws => hDom.apply(this, finalArgs.concat([ws.filter(d => d !== nil_dom)])))(zip(args[0].map(upGenerator)))
   } else {
-    return hDom.apply(this, finalArgs.concat(args[0]))
+    return hDom.apply(this, finalArgs.concat([args[0]]))
   }
 }
 
@@ -88,5 +117,6 @@ module.exports = {
   run: run,
   h: h,
   mapOut: mapOut,
-  zip: zip
+  zip: zip,
+  memo: memo
 }
