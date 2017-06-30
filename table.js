@@ -2,6 +2,28 @@
 
 // {width: n, outs: [{height: n, render: (w,h) => out}]}
 
+const cmp = (l, r, lt, eq, gt) => l < r ? lt() : (r < l ? gt() : eq())
+const zipWith = (fn, l, r) => l.length === 0 || r.length === 0 ? [] : fn(l[0], r[0]).concat(zipWith(fn, l.slice(1), r.slice(1)))
+const takeShortest = (l,r) => l.height <= r.height ? l : r
+
+const cons = (v, vs) => ({width: vs.width-1, outs: [v].concat(vs)})
+const tail = vals => ({width: vals.width+1, outs: vals.outs.slice(1)})
+const extend = vals => ({width: vals.width, outs: vals.outs.concat([vals.outs[vals.outs.length-1]])})
+
+const alt2 = (l,r) => ({width: l.width, outs: zipWith(takeShortest, l, r)})
+const alt1 = (l,r) => cmp(l.outs.length, r.outs.length, () => alt1(extend(l), r), alt2(l, r), alt1(l, extend(r)))
+const alt = (l,r) => cmp(r.width, l.width, () => alt(r,l), () => alt1(l, r), () => cons(l.outs[0], alt(tail(l), r)))
+
+const extend = (outs, len) => {
+  outs = outs.slice(0)
+  let last = outs[ outs.length - 1 ]
+  while(outs.length < len) {
+    outs.push(last)
+  }
+  return outs
+}
+
+/*
 const alt = (l,r) => {
   if(l.width > r.width) return alt(r, l)
   let outs = []
@@ -16,10 +38,11 @@ const alt = (l,r) => {
   }
   for(let ii = r.width + r.outs.length; ii < l.width + l.outs.length; ii++) {
     outs.push(
-      l.outs[ii].height <= r.outs[r.outs.length - 1].height ? l.outs[ii] : r.outs[r.outs.length - 1])
+      l.outs[ii - l.width].height <= r.outs[r.outs.length - 1].height ? l.outs[ii - l.width] : r.outs[r.outs.length - 1])
   }
   return {width: l.width, outs: outs}
 }
+*/
 
 const distribExtra = (total, xs) => {
   let excess = total - xs.reduce((x,y) => x + y)

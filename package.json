@@ -1,10 +1,10 @@
 {
   "name": "imperative",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Structured UI Programming",
   "main": "imperative.js",
   "dependencies": {
-    "snabbdom": "^0.6.7"
+    "snabbdom": "^0.6.9"
   },
   "devDependencies": {},
   "scripts": {
