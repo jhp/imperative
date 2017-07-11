@@ -1,12 +1,111 @@
-let snabbdom = require("snabbdom")
-let patch = snabbdom.init([
-  require('snabbdom/modules/attributes').default,
-  require('snabbdom/modules/class').default,
-  require('snabbdom/modules/props').default,
-  require('snabbdom/modules/style').default,
-  require('snabbdom/modules/eventlisteners').default
-])
-let hDom = require('snabbdom/h').default
+function VDOM(tagName, attrs, children) { this.tagName = tagName; this.attrs = attrs; this.children = children }
+let hArgs = (args) => {
+  let tagName = args.shift()
+  let attrs = {}
+  if(typeof args[0] == 'object' && !Array.isArray(args[0]) && !(args[0] instanceof VDOM)) {
+    attrs = args.shift()
+  }
+  let children = [].concat.apply([], args.map(arg => Array.isArray(arg) ? arg : [arg]))
+  return {tagName, attrs, children}
+}
+
+let vdomMap = new WeakMap()
+
+function patch(vdom, node) {
+  if(!vdomMap.has(node) || typeof vdom === "string") {
+    let [focusNode, vdomNode] = create(vdom)
+    if(focusNode) focusNode.focus()
+    node.parentNode.replaceChild(vdomNode, node)
+    return vdomNode
+  }
+
+  let old = vdomMap.get(node)
+  if(old === vdom) return node
+  
+  if(old.tagName !== vdom.tagName || vdom.attrs.oncreate) {
+    let [focusNode, vdomNode] = create(vdom)
+    if(focusNode) focusNode.focus()
+    node.parentNode.replaceChild(vdomNode, node)
+    return vdomNode
+  }
+
+  vdomMap.set(node, vdom)
+  // reconcile attrs and styles
+  for(let key of new Set(Object.keys(old.attrs).concat(Object.keys(vdom.attrs)))) {
+    if(key === 'focus') continue
+    if(key === 'style') {
+      for(let styleKey of new Set(Object.keys(old.attrs.style || {}).concat(Object.keys(vdom.attrs.style || {})))) {
+        let oldStyle = (old.attrs.style || {})[styleKey]
+        let newStyle = (vdom.attrs.style || {})[styleKey]
+        if(oldStyle !== newStyle) {
+          node.style[ styleKey ] = newStyle
+        }
+      }
+    } else {
+      if(vdom.attrs[key] !== old.attrs[key]) {
+        node[key] = vdom.attrs[key]
+      }
+    }
+  }
+  if(vdom.attrs.focus && node !== document.activeElement)
+    node.focus()
+  if(!vdom.attrs.focus && node === document.activeElement)
+    node.blur()
+  // reconcile children - a simple algorithm with no attempt to keep track of shuffled lists
+  let nodeChild = node.firstChild
+  for(let child of vdom.children) {
+    while(nodeChild && nodeChild.nodeType !== 1) {
+      let next = nodeChild.nextSibling
+      node.removeChild(nodeChild)
+      nodeChild = next
+    }
+    if(nodeChild) {
+      let next = nodeChild.nextSibling
+      patch(child, nodeChild)
+      nodeChild = next
+    } else {
+      let [childFocus, childNode] = create(child)
+      node.appendChild(childNode)
+      if(childFocus) childFocus.focus()
+    }
+  }
+  if(nodeChild) {
+    while(nodeChild.nextSibling) {
+      node.removeChild(nodeChild.nextSibling)
+    }
+    node.removeChild(nodeChild)
+  }
+  return node
+  function create(vdom) {
+    if(typeof vdom === "string") return [null, document.createTextNode(vdom)]
+
+    let node = document.createElement(vdom.tagName)
+    vdomMap.set(node, vdom)
+    for(let key of Object.keys(vdom.attrs)) {
+      if(key === 'focus' || key === 'oncreate') continue
+      if(key === 'style') {
+        for(let styleKey of Object.keys(vdom.attrs.style)) {
+          node.style[ styleKey ] = vdom.attrs.style[ styleKey ]
+        }
+      } else {
+        node[ key ] = vdom.attrs[ key ]
+      }
+    }
+    let focusNode = null
+    for(let child of vdom.children) {
+      let [childFocus, childNode] = create(child)
+      node.appendChild(childNode)
+      focusNode = focusNode || childFocus
+    }
+    if(vdom.attrs['focus']) {
+      focusNode = node
+    }
+    if(vdom.attrs.oncreate) {
+      vdom.attrs.oncreate(node)
+    }
+    return [focusNode, node]
+  }
+}
 
 let gensym = function() {
   let n = 1
@@ -99,26 +198,19 @@ let run = (w, elem) => {
         e => { if(!done) { done = true; next(undefined, e) } },
         () => done)
       if(nextVNode === nil_dom) {
-        nextVNode = () => h('span')
+        nextVNode = h('span')
       }
-      vnode = patch(vnode || elem, nextVNode())
+      elem = patch(nextVNode, elem)
     }
   }
 }
 
 let h = function() {
-  let args = [...arguments]
-  let finalArgs = []
-  while(args.length && !Array.isArray(args[0])) {
-    finalArgs.push(args.shift())
-  }
-  if(!args.length) {
-    return () => hDom.apply(this, arguments)
-  }
-  if(args[0].some(isGenerator)) {
-    return mapOut(ws => () => hDom.apply(this, finalArgs.concat([ws.filter(d => d !== nil_dom).map(d => d.call ? d() : d)])))(zip(args[0].map(upGenerator)))
+  let {tagName, attrs, children} = hArgs([...arguments])
+  if(children.some(isGenerator)) {
+    return mapOut(ws => new VDOM(tagName, attrs, ws.filter(d => d !== nil_dom)))(zip(children.map(upGenerator)))
   } else {
-    return () => hDom.apply(this, finalArgs.concat([args[0].map(d => d.call ? d() : d)]))
+    return new VDOM(tagName, attrs, children)
   }
 }
 
@@ -132,34 +224,29 @@ function* button(markup, state) {
     h('span', {
       attrs: {tabindex: 0},
       style: {cursor: 'pointer'},
-      on: {
-        mouseenter: (ev) => {
-          ev.stopPropagation()
-          resolve({event: ev, state: Object.assign(state, {hover: true})})
-        },
-        mouseleave: (ev) => {
-          ev.stopPropagation()
-          resolve({event: ev, state: Object.assign(state, {hover: false})})
-        },
-        click: (ev) => {
-          ev.stopPropagation()
-          resolve({event: ev, state: state})
-        },
-        blur: (ev) => {
-          ev.stopPropagation()
-          if(state.focus)
-            resolve({event: ev, state: Object.assign({}, state, {focus: false})})
-        },
-        focus: (ev) => {
-          ev.stopPropagation();
-          if(!state.focus)
-            resolve({event: ev, state: Object.assign({}, state, {focus: true})})
-        }
+      onmouseenter: (ev) => {
+        ev.stopPropagation()
+        resolve({event: ev, state: Object.assign(state, {hover: true})})
       },
-      hook: {
-        insert: (vnode) => state.focus ? (vnode.elm !== document.activeElement) && vnode.elm.focus() : (vnode.elm === document.activeElement) && vnode.elm.blur(),
-        postpatch: (old, vnode) => state.focus ? (vnode.elm !== document.activeElement) && vnode.elm.focus() : (vnode.elm === document.activeElement) && vnode.elm.blur()
-      }
+      onmouseleave: (ev) => {
+        ev.stopPropagation()
+        resolve({event: ev, state: Object.assign(state, {hover: false})})
+      },
+      onclick: (ev) => {
+        ev.stopPropagation()
+        resolve({event: ev, state: state})
+      },
+      onblur: (ev) => {
+        ev.stopPropagation()
+        if(state.focus)
+          resolve({event: ev, state: Object.assign({}, state, {focus: false})})
+      },
+      onfocus: (ev) => {
+        ev.stopPropagation();
+        if(!state.focus)
+          resolve({event: ev, state: Object.assign({}, state, {focus: true})})
+      },
+      focus: state.focus
     }, [markup])
 }
 
@@ -196,23 +283,24 @@ function* radio(options, containerStyles, labelStyles, state) {
               }
             }, [
               h('input', {
-                props: {type: 'radio', value: option, name: state.name, checked: state.value === option},
-                on: {
-                  change: (ev) => {
-                    ev.stopPropagation()
-                    resolve({event: ev, state: Object.assign(state, {value: ev.target.value})})
-                  },
-                  blur: (ev) => {
-                    ev.stopPropagation()
-                    if(state.focus)
-                      resolve({event: ev, state: Object.assign({}, state, {focus: false})})
-                  },
-                  focus: (ev) => {
-                    ev.stopPropagation()
-                    if(!state.focus)
-                      resolve({event: ev, state: Object.assign({}, state, {focus: true})})
-                  }
+                type: 'radio',
+                value: option,
+                name: state.name,
+                checked: state.value === option,
+                onchange: (ev) => {
+                  ev.stopPropagation()
+                  resolve({event: ev, state: Object.assign(state, {value: ev.target.value})})
                 },
+                onblur: (ev) => {
+                  ev.stopPropagation()
+                  if(state.focus)
+                    resolve({event: ev, state: Object.assign({}, state, {focus: false})})
+                },
+                onfocus: (ev) => {
+                  ev.stopPropagation()
+                  if(!state.focus)
+                    resolve({event: ev, state: Object.assign({}, state, {focus: true})})
+                }
               }, []),
               option])]})))
 }
@@ -222,27 +310,23 @@ function* checkbox(text, styles, state) {
   return yield (resolve, reject) =>
     h('label', {style: styles}, [
       h('input', {
-        props: {type: 'checkbox', checked: state.checked},
-        on: {
-          change: (ev) => {
-            ev.stopPropagation()
-            resolve({event: ev, state: Object.assign(state, {checked: ev.target.checked})})
-          },
-          blur: (ev) => {
-            ev.stopPropagation()
-            if(state.focus)
-              resolve({event: ev, state: Object.assign({}, state, {focus: false})})
-          },
-          focus: (ev) => {
-            ev.stopPropagation()
-            if(!state.focus)
-              resolve({event: ev, state: Object.assign({}, state, {focus: true})})
-          }
+        type: 'checkbox',
+        checked: state.checked,
+        onchange: (ev) => {
+          ev.stopPropagation()
+          resolve({event: ev, state: Object.assign(state, {checked: ev.target.checked})})
         },
-        hook: {
-          insert: (vnode) => state.focus ? vnode.elm.focus() : vnode.elm.blur(),
-          postpatch: (old, vnode) => state.focus ? vnode.elm.focus() : vnode.elm.blur()
-        }
+        onblur: (ev) => {
+          ev.stopPropagation()
+          if(state.focus)
+            resolve({event: ev, state: Object.assign({}, state, {focus: false})})
+        },
+        onfocus: (ev) => {
+          ev.stopPropagation()
+          if(!state.focus)
+            resolve({event: ev, state: Object.assign({}, state, {focus: true})})
+        },
+        focus: state.focus
       }, []),
       h('span', {}, text)])
 }
@@ -253,26 +337,21 @@ function* textInput(placeholder, styles, state) {
     h('input', {
       props: {type: 'text', value: state.value, placeholder: placeholder},
       style: styles,
-      on: {
-        input: (ev) => {
-          ev.stopPropagation()
-          resolve({event: ev, state: Object.assign(state, {value: ev.target.value})})
-        },
-        blur: (ev) => {
-          ev.stopPropagation()
-          if(state.focus)
-            resolve({event: ev, state: Object.assign({}, state, {focus: false})})
-        },
-        focus: (ev) => {
-          ev.stopPropagation()
-          if(!state.focus)
-            resolve({event: ev, state: Object.assign({}, state, {focus: true})})
-        }
+      oninput: (ev) => {
+        ev.stopPropagation()
+        resolve({event: ev, state: Object.assign(state, {value: ev.target.value})})
       },
-      hook: {
-        insert: (vnode) => state.focus ? vnode.elm.focus() : vnode.elm.blur(),
-        postpatch: (old, vnode) => state.focus ? vnode.elm.focus() : vnode.elm.blur()
-      }
+      onblur: (ev) => {
+        ev.stopPropagation()
+        if(state.focus)
+          resolve({event: ev, state: Object.assign({}, state, {focus: false})})
+      },
+      onfocus: (ev) => {
+        ev.stopPropagation()
+        if(!state.focus)
+          resolve({event: ev, state: Object.assign({}, state, {focus: true})})
+      },
+      focus: state.focus
     }, [])
 }
 
@@ -280,28 +359,23 @@ function* select(options, styles, state) {
   state = Object.assign({focus: false, value: null}, state || {})
   return yield (resolve, reject) =>
     h('select', {
-      props: {value: state.value},
+      value: state.value,
       style: styles,
-      on: {
-        change: (ev) => {
-          ev.stopPropagation()
-          resolve({event: ev, state: Object.assign(state, {value: ev.target.value})})
-        },
-        blur: (ev) => {
-          ev.stopPropagation()
-          if(state.focus)
-            resolve({event: ev, state: Object.assign({}, state, {focus: false})})
-        },
-        focus: (ev) => {
-          ev.stopPropagation()
-          if(!state.focus)
-            resolve({event: ev, state: Object.assign({}, state, {focus: true})})
-        }
+      onchange: (ev) => {
+        ev.stopPropagation()
+        resolve({event: ev, state: Object.assign(state, {value: ev.target.value})})
       },
-      hook: {
-        insert: (vnode) => state.focus ? vnode.elm.focus() : vnode.elm.blur(),
-        postpatch: (old, vnode) => state.focus ? vnode.elm.focus() : vnode.elm.blur()
-      }
+      onblur: (ev) => {
+        ev.stopPropagation()
+        if(state.focus)
+          resolve({event: ev, state: Object.assign({}, state, {focus: false})})
+      },
+      onfocus: (ev) => {
+        ev.stopPropagation()
+        if(!state.focus)
+          resolve({event: ev, state: Object.assign({}, state, {focus: true})})
+      },
+      focus: state.focus
     }, options.map(option => h('option', {props: {value: option}}, [option])))
 }
 
