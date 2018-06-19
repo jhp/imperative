@@ -15,8 +15,8 @@ const counter = require("./flows/counter")
 
 const wait = require("./flows/wait")
 const timeout = require("./flows/timeout")
-const get = require("./flows/get")
-const post = require("./flows/post")
+const promise = require("./flows/promise")
+const fetch = require("./flows/fetch")
 
 const state = require("./state")
 
@@ -30,6 +30,7 @@ module.exports = {
     memo: memo,
 
     // flows
+    promise: promise,
     button: button,
     clickButton: clickButton,
     radio: radio,
@@ -39,8 +40,7 @@ module.exports = {
     counter: counter,
     wait: wait,
     timeout: timeout,
-    get: get,
-    post: post,
+    fetch: fetch,
 
     state: state
 }
