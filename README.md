@@ -126,7 +126,7 @@ function* visible(threshold) {
                     resolve(entry);
                 }
             }, {threshold}).observe(elem);
-            cleanup(() => ob.cancel());
+            cleanup(() => ob.disconnect());
         })
     });
 }
