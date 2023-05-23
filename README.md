@@ -1,65 +1,138 @@
-Imperative.js - Structured UI Programming with ES6 Generators
-===========================================================
+Imperative: Stateful Components 20x smaller than React with no VDOM
+===================================================================
 
-For a brief introduction to the idea behind Imperative, see <http://jasonhpriestley.com/flows>.
+Imperative.js uses javascript generators to reproduce the advantages of React -
+reusable, stateful components - without the complexity or code size. It is an
+almost trivial library of only 1.5kb (minified + gzipped) but no less general
+than React, and actually more ergonomic in some cases, such as waiting for a
+fetch call.
 
-To install Imperative, `npm install imperative`.
+An imperative component is an ordinary javascript generator. It can be run by
+calling `run`. The optional second argument to run will set the root of the
+application (defaults to `document.body`):
 
-Run
----
+~~~{.javascript}
+let { run } = require("imperative");
+run(function*() { yield* H('div', "Hello, world"); });
+~~~
 
-`run(flow, node)` will run a flow in the given DOM node.
+Instead of JSX, Imperative uses ordinary javascript functions. These can be
+easily remembered with the mnemonic `HASTE`. `H - HTML element`, `A - Attribute`, 
+`S - Style`, `T - text`, `E - events`.
 
-```js
-run(function*() {
-  yield () => h('span', 'Hello, Imperative')
-}(), document.body)
-```
+~~~{.javascript}
+function* example() {
+    // the first argument to H is an element name, after that pass 
+    // any number of components or arrays of components.
+    yield* H('div',
+        // all the HASTE functions return components. This one will set a style
+        // on the parent div.
+        S('backgroundColor', 'black'),
+        // alternative style syntax with objects
+        S({'color': 'white'}),
+        function*() {
+            // the E component will wait for the given event, then return the
+            // event object.
+            let ev = yield* E('click');
+            yield* S('border', '1px solid green');
+        },
+        T('Example Div'));
+}
+~~~
 
-h
--
+Imperative uses normal generator control flow. The children of an `H` call will
+run in parallel until one of them returns, the return value of that child will
+return from `H`.
 
-`h(nodeName, attrs?, children | [children], ...)` builds virtual-dom nodes from virtual-dom node children, or flows from flow children.
+~~~{.javascript}
+function*() {
+    let color = yield* H('div',
+        H('button', T('Red'), function*() { yield* E('click'); return 'Red'; }),
+        H('button', T('Blue'), function*() { yield* E('click'); return 'Blue'; }));
+    yield* H('div', `You chose the ${color} pill`);
+}
+~~~
 
-```js
-// an empty span virtual-dom node
-h('span')
+Sometimes you want the parallel execution without introducing a DOM parent element. This can be accomplished with `multi`.
 
-// attributes, including style, can be set with a JS object as the second argument
-h('span', {style: {color: 'red'}}) 
+~~~{.javascript}
+function*() {
+    let fetchResult = yield* multi(
+        // Fetch = fetch wrapped into an imperative component
+        Fetch('/api'),
+        H('div', T('Waiting for api...')));
+    let jsonResult = yield* multi(
+        fetchResult.json(),
+        H('div', T('Waiting for response body...')));
+    yield* H('div', T(JSON.stringify(jsonResult)));
+}
+~~~
 
-// children, either strings or other virtual-dom nodes, can be passed in further arguments
-// any number of children can be passed in, singly or in arrays
-h('div', {}, 
-   h('span', {}, 'child one'), 
-   [h('span', {}, 'child two'), h('span', {}, 'child three')])
+`Fetch` simply wraps `fetch` into an imperative generator, adding
+auto-cancellation. The `json` and `text` methods of the response are also
+wrapped. `wait` is a similar wrapper for `setTimeout`, and `waitFrame` for
+`requestAnimationFrame`.
 
-// the attributes argument is optional
-h('div', 'no attributes')
+Many UI problems can be solved using a combination of control flow and parallel
+execution. Sometimes we do need a mechanism to communicate between different
+pieces of the UI. For this purpose we can use `Var`. `Var` has methods:
 
-// if the children are a flow, then the parent is a flow
-h('div', function*() { yield () => h('span') }())
+~~~
+get - get current value
+set - set a new value
+next - component, will return with next value
+fmap - create a new component with the provided function, each time the value changes
+~~~
 
-// the containing flow will return as soon as any child returns
-// this example will immediately return 1
-h('div', function*() { return 1 }, function*() { yield () => h('span') })
-```
+~~~{.javascript}
+function*() {
+    let color = Var('red');
+    yield* H('div',
+        H('button', T('red'), function*() { 
+            while(true) { 
+                yield* E('click'); 
+                color.set('red'); 
+            } 
+        }),
+        H('button', T('blue'), function*() { 
+            while(true) { 
+                yield* E('click'); 
+                color.set('blue'); 
+            } 
+        }),
+        H('div', color.fmap(current => T(`you chose the ${current} pill`))));
+}
+~~~
 
-mapOut and zip
---------------
+These functions - `run, HASTE, Var, multi, Fetch, wait` - are the high-level
+API of imperative. For low-level operations you need to understand what the
+generators are doing. An imperative component is a generator that yields
+functions of the form `{H, cleanup} => Promise`. The parent will wait for the
+promise, then return its result to the generator. `cleanup` allows you to
+register cleanup functions which will run when the generator finishes, or when
+it is cut off by a parallel generator finishing. `H` in this context is
+different from the main `H`, in a `yield` function the `H` has signature
+`DomElement => DomElement` and allows you to access the parent dom element
+directly.
 
-`h` is built on top of two more-fundamental operations, `mapOut` and `zip`.
+Here is an example of using the low-level API to implement intersection observers.
 
-`mapOut(fn)(flow)` will apply `fn` to the output type of `flow`, creating a new flow.
+~~~{.javascript}
+function* visible(threshold) {
+    return yield ({H, cleanup}) => new Promise(resolve => {
+        H(elem => {
+            let ob = new IntersectionObserver(([entry]) => {
+                if(entry.isIntersecting) {
+                    resolve(entry);
+                }
+            }, {threshold}).observe(elem);
+            cleanup(() => ob.cancel());
+        })
+    });
+}
+~~~
 
-`zip(flows)` will turn an array of flows into a flow with an array as output type.
-
-```js
-// alternative to calling polymorphic h('div', flow1, flow2)
-mapOut(children => h('div', children))(zip([child1, child2]))
-```
-
-`mapOut` and `zip` can be used explicitly to pass extra information
-with the output, or to use output types beside a vdom element. The final
-output of the flow passed to `run` should be a vdom node though.
-
+Another low-level function is `local`. `local` allows you to change the set of
+options being passed down into each generator. The HTML DOM-specific API of
+imperative is implemented on top of `multi` and `local`, and it is equally easy
+to use any other type of persistent UI tree, e.g. within a canvas element.
