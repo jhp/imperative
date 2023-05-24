@@ -11,16 +11,16 @@ An imperative component is an ordinary javascript generator. It can be run by
 calling `run`. The optional second argument to run will set the root of the
 application (defaults to `document.body`):
 
-~~~{.javascript}
+```js
 let { run } = require("imperative");
 run(function*() { yield* H('div', "Hello, world"); });
-~~~
+```
 
 Instead of JSX, Imperative uses ordinary javascript functions. These can be
 easily remembered with the mnemonic `HASTE`. `H - HTML element`, `A - Attribute`, 
 `S - Style`, `T - text`, `E - events`.
 
-~~~{.javascript}
+```js
 function* example() {
     // the first argument to H is an element name, after that pass 
     // any number of components or arrays of components.
@@ -38,24 +38,24 @@ function* example() {
         },
         T('Example Div'));
 }
-~~~
+```
 
 Imperative uses normal generator control flow. The children of an `H` call will
 run in parallel until one of them returns, the return value of that child will
 return from `H`.
 
-~~~{.javascript}
+```js
 function*() {
     let color = yield* H('div',
         H('button', T('Red'), function*() { yield* E('click'); return 'Red'; }),
         H('button', T('Blue'), function*() { yield* E('click'); return 'Blue'; }));
     yield* H('div', `You chose the ${color} pill`);
 }
-~~~
+```
 
 Sometimes you want the parallel execution without introducing a DOM parent element. This can be accomplished with `multi`.
 
-~~~{.javascript}
+```js
 function*() {
     let fetchResult = yield* multi(
         // Fetch = fetch wrapped into an imperative component
@@ -66,7 +66,7 @@ function*() {
         H('div', T('Waiting for response body...')));
     yield* H('div', T(JSON.stringify(jsonResult)));
 }
-~~~
+```
 
 `Fetch` simply wraps `fetch` into an imperative generator, adding
 auto-cancellation. The `json` and `text` methods of the response are also
@@ -84,7 +84,7 @@ next - component, will return with next value
 fmap - create a new component with the provided function, each time the value changes
 ~~~
 
-~~~{.javascript}
+```js
 function*() {
     let color = Var('red');
     yield* H('div',
@@ -102,7 +102,7 @@ function*() {
         }),
         H('div', color.fmap(current => T(`you chose the ${current} pill`))));
 }
-~~~
+```
 
 These functions - `run, HASTE, Var, multi, Fetch, wait` - are the high-level
 API of imperative. For low-level operations you need to understand what the
@@ -117,7 +117,7 @@ directly.
 
 Here is an example of using the low-level API to implement intersection observers.
 
-~~~{.javascript}
+```js
 function* visible(threshold) {
     return yield ({H, cleanup}) => new Promise(resolve => {
         H(elem => {
@@ -130,7 +130,7 @@ function* visible(threshold) {
         })
     });
 }
-~~~
+```
 
 Another low-level function is `local`. `local` allows you to change the set of
 options being passed down into each generator. The HTML DOM-specific API of
