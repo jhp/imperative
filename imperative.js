@@ -240,7 +240,13 @@ function* Fetch(url, opts={}) {
     return yield ({cleanup}) => {
         let ac = new AbortController();
         cleanup(() => ac.abort());
-        return fetch(url, {...opts, signal: ac.signal});
+        return fetch(url, {...opts, signal: ac.signal}).then(fetchResult => {
+            let json = fetchResult.json.bind(fetchResult);
+            let text = fetchResult.text.bind(fetchResult);
+            fetchResult.json = function*() { yield () => json() };
+            fetchResult.text = function*() { yield () => text() };
+            return fetchResult;
+        });
     }
 }
 
