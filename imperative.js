@@ -11,7 +11,7 @@ async function run(main, container=document.body) {
         try {
             output = {v: await value({
                 H: (felem) => { 
-                    elem = felem( container.firstChild );
+                    let elem = felem( container.firstChild );
                     if(elem) {
                         container.appendChild(elem); 
                     } else {
