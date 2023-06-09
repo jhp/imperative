@@ -11,7 +11,7 @@ async function run(main, container=document.body) {
         try {
             output = {v: await value({
                 H: (felem) => { 
-                    elem = felem( container, () => {
+                    let elem = felem( container, () => {
                         container.removeChild(elem);
                     });
                     if(elem) {
