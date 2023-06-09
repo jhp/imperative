@@ -11,12 +11,12 @@ async function run(main, container=document.body) {
         try {
             output = {v: await value({
                 H: (felem) => { 
-                    elem = felem( container.firstChild );
+                    elem = felem( container, () => {
+                        container.removeChild(elem);
+                    });
                     if(elem) {
                         container.appendChild(elem); 
-                    } else {
-                        container.removeChild(container.firstChild);
-                    }
+                    } 
                 }, 
                 cleanup: (k) => cleanup.push(k)
             })};
@@ -29,15 +29,14 @@ async function run(main, container=document.body) {
     
 }
 
-function hang() {
+function never() {
     return new Promise(resolve => {});
 }
 
 function* T(str) {
     yield ({H, cleanup}) => {
-        H(() => document.createTextNode(str));
-        cleanup(() => H(() => null));
-        return hang();
+        H((_,remover) => { cleanup(remover); return document.createTextNode(str) });
+        return never();
     };
 }
 
@@ -47,7 +46,7 @@ function* A(name, val) {
             elem[ name ] = val;
             cleanup(() => { elem[ name ] = null; });
         });
-        return hang();
+        return never();
     };
 }
 
@@ -57,7 +56,7 @@ function* globalStyle(css) {
         document.head.appendChild(ss);
         ss.innerText = css;
         cleanup(() => document.head.removeChild(ss));
-        return hang();
+        return never();
     }
 }
 
@@ -74,7 +73,7 @@ function* S(name, val) {
                 }
             });
         });
-        return hang();
+        return never();
     };
 }
 
@@ -90,28 +89,28 @@ function* E(name) {
 
 function* H(name, ...children) {
     children = children.flat(1).map(child => typeof child === 'string' ? function*() { yield* T(child) } : child);
-    let childElems = children.map(() => null);
+    let childElems = children.map(() => []);
     let parentElem = document.createElement(name);
     return yield* multi(
         function*() {
             yield ({H, cleanup}) => {
-                H(() => parentElem);
-                cleanup(() => H(() => null));
-                return hang();
+                H((_,remover) => { cleanup(remover); return parentElem });
+                return never();
             }
         },
         children.map((child, ii) =>
             local(({H, ...args}) => ({
                 H: (fel) => {
-                    let el = fel( parentElem, childElems[ii] );
-                    if(!el) {
-                        if(childElems[ii]) parentElem.removeChild(childElems[ii])
-                    } else {
-                        let nextChild = childElems.slice(ii).find(Boolean);
+                    let el = fel(parentElem, () => {
+                        childElems[ii] = childElems[ii].filter(cel => cel !== el);
+                        parentElem.removeChild(el);
+                    });
+                    if(el) {
+                        let nextChild = childElems.slice(ii+1).flat().find(Boolean);
                         if(nextChild) parentElem.insertBefore(el, nextChild);
                         else parentElem.appendChild(el);
+                        childElems[ii].push(el);
                     }
-                    childElems[ii] = el;
                 },
                 ...args
             }), child)
@@ -226,7 +225,6 @@ function Var(init) {
     return wrapAsyncVar( AsyncVar(init) );
 }
 
-
 function* openPortal(fn) {
     let portalArgs;
     let resolvePortal;
@@ -258,4 +256,4 @@ function* waitFrame(n) {
     yield () => new Promise(resolve => requestAnimationFrame(resolve));
 }
 
-module.exports = { run, multi, local, H, A, S, T, E, globalStyle, Var, openPortal, hang, Fetch, wait, waitFrame };
+module.exports = { run, multi, local, H, A, S, T, E, globalStyle, Var, openPortal, never, Fetch, wait, waitFrame };
