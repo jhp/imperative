@@ -222,6 +222,15 @@ function wrapAsyncVar(asyncVar) {
 }
 
 function Var(init) {
+    if(Object.prototype.toString.call(init) === '[object AsyncGenerator]') {
+        let ret = Var(undefined);
+        (async () => {
+            for await(val of init) {
+                ret.set(val);
+            }
+        })();
+        return ret;
+    }
     return wrapAsyncVar( AsyncVar(init) );
 }
 
